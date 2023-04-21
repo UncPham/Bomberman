@@ -1,15 +1,14 @@
-﻿//Bomberman Game 
+//Bomberman Game 
 #include <SDL.h>
 #include <SDL_image.h>
 #include <SDL_mixer.h>
 #include <SDL_ttf.h>
 #include <stdio.h>
+#include <sstream>
 #include <string>
 #include <fstream>
 #include <cstdlib>
 #include <cmath>
-#include <thread>
-#include <vector>
 #include <iostream>
 
 //Screen dimension constants
@@ -25,6 +24,18 @@ const int TILE_WIDTH = 32;
 const int TILE_HEIGHT = 32;
 const int TOTAL_TILES = 585;
 const int TOTAL_TILE_SPRITES = 18;
+
+const int BUTTON_WIDTH = 100;
+const int BUTTON_HEIGHT = 100;
+const int TOTAL_BUTTONS = 3;
+
+enum LButtonSprite
+{
+	BUTTON_SPRITE_MOUSE_OUT = 0,
+	BUTTON_SPRITE_MOUSE_OVER_MOTION = 1,
+	BUTTON_SPRITE_MOUSE_DOWN = 2,
+	BUTTON_SPRITE_TOTAL = 3
+};
 
 //The different tile sprites
 const int Land = 0;
@@ -47,18 +58,31 @@ const int BoxHasDoorExploding = 16;
 const int HardWall = 17;
 
 const int Menu = 1;
+const int ChooseMode = 7;
 const int Pause = 2;
 const int MultiPlayer = 3;
 const int NormalGame = 4;
 const int Playing = 5;
 const int EndGame = 6;
+const int WinGame = 7;
+const int Player1Win = 8;
+const int Player2Win = 9;
+
+const int LevelNormal = 5;
+const int LevelMultiPlayer = 3;
+
+const int MaxBomb = 5;
+const int MaxBot = 40;
 
 
 int count = 0;
 int totalBomb = 1;
 int currentLevel = 1;
+int score = 0;
+
 
 int game = Menu;
+int mode;
 
 bool UpLevel = false;
 
@@ -134,7 +158,29 @@ private:
 	int mType;
 };
 
-//The application time based timer
+class LButton
+{
+public:
+	//Initializes internal variables
+	LButton();
+
+	//Sets top left position
+	void setPosition(int x, int y);
+
+	//Handles mouse event
+	bool handleEvent(SDL_Event* e);
+
+	//Shows button sprite
+	void render();
+
+private:
+	//Top left position
+	SDL_Point mPosition;
+
+	//Currently used global sprite
+	LButtonSprite mCurrentSprite;
+};
+
 class LTimer
 {
 public:
@@ -144,18 +190,25 @@ public:
 	//The various clock actions
 	void start();
 	void stop();
+	void pause();
+	void unpause();
 
 	//Gets the timer's time
 	Uint32 getTicks();
 
 	//Checks the status of the timer
 	bool isStarted();
+	bool isPaused();
 
 private:
 	//The clock time when the timer started
 	Uint32 mStartTicks;
 
+	//The ticks stored when the timer was paused
+	Uint32 mPausedTicks;
+
 	//The timer status
+	bool mPaused;
 	bool mStarted;
 };
 
@@ -169,7 +222,9 @@ public:
 	//Initializes the variables
 	Bomb();
 
-	bool handleEvent(SDL_Event& e, SDL_Rect dot);
+	bool handleEvent1(SDL_Event& e, SDL_Rect dot);
+
+	bool handleEvent2(SDL_Event& e, SDL_Rect dot);
 
 	//Shows the dot on the screen
 	void render(SDL_Rect& camera, Tile* tiles[]);
@@ -251,6 +306,7 @@ private:
 	int mVelX, mVelY;
 
 	Uint32 time;
+
 	bool change;
 
 	bool dead;
@@ -269,14 +325,14 @@ public:
 	int DOT_VEL = 2;
 
 	//Initializes the variables
-	Dot();
+	Dot(int x, int y);
 
 	//Takes key presses and adjusts the dot's velocity
 	void handleEvent1(SDL_Event& e);
 	void handleEvent2(SDL_Event& e);
 
 	//Moves the dot and check collision against tiles
-	void move(Tile* tiles[], Bomb* bomb[], Bot* bot[]);
+	void move(Tile* tiles[], Bomb* bomb[], Bot* bot[], Dot* otherDot = NULL, Bomb* bomb2[] = NULL);
 
 	//Centers the camera over the dot
 	void setCamera(SDL_Rect& camera);
@@ -293,12 +349,15 @@ public:
 	int getRect_x();
 	int getRect_y();
 
+	int getTotalBomb();
+
 	bool getDead();
 	void deadRender(SDL_Rect camera);
 
 	int getLife();
 
 	void setRect();
+	void setVel();
 
 	SDL_Rect getRect();
 
@@ -310,6 +369,8 @@ private:
 	int mVelX, mVelY;
 
 	bool dead;
+
+	int totalBomb;
 
 	int step;
 	bool right;
@@ -327,10 +388,10 @@ private:
 bool init();
 
 //Loads media
-bool loadMedia(Tile* tiles[], Bot* bot);
+bool loadMedia();
 
 //Frees media and shuts down SDL
-void close(Tile* tiles[]);
+void close(Tile* tiles[], Bomb* bomb1[], Bomb* bomb2[], Bot* bot[]);
 
 //Box collision detector
 bool checkCollision(SDL_Rect a, SDL_Rect b);
@@ -351,8 +412,6 @@ bool setTiles(Tile* tiles[], Bot* bot[], int gameLevel);
 
 void NextLevel(Tile* tiles[], Dot& dot, Bot* bot[], Bomb* bomb[]);
 
-void mouseEvent(SDL_Event* e);
-
 //The window we'll be rendering to
 SDL_Window* gWindow = NULL;
 
@@ -368,13 +427,22 @@ LTexture BoomTexture;
 LTexture BotTexture;
 LTexture EndGameTexture;
 LTexture MenuTexture;
+LTexture PauseTexture;
 
 LTexture NextLevelText;
+LTexture gTimeTextTexture;
 
 //Globally used font
 TTF_Font* gFont = NULL;
 
 Mix_Music* Music = NULL;
+
+//Mouse button sprites
+SDL_Rect gSpriteClips[BUTTON_SPRITE_TOTAL];
+LTexture gButtonSpriteSheetTexture;
+
+//Buttons objects
+LButton gButtons[TOTAL_BUTTONS];
 
 LTexture::LTexture()
 {
@@ -524,6 +592,85 @@ int LTexture::getHeight()
 	return mHeight;
 }
 
+
+LButton::LButton()
+{
+	mPosition.x = 0;
+	mPosition.y = 0;
+
+	mCurrentSprite = BUTTON_SPRITE_MOUSE_OUT;
+}
+
+void LButton::setPosition(int x, int y)
+{
+	mPosition.x = x;
+	mPosition.y = y;
+}
+
+bool LButton::handleEvent(SDL_Event* e)
+{
+	//If mouse event happened
+	if (e->type == SDL_MOUSEMOTION || e->type == SDL_MOUSEBUTTONDOWN)
+	{
+		//Get mouse position
+		int x, y;
+		SDL_GetMouseState(&x, &y);
+
+		//Check if mouse is in button
+		bool inside = true;
+
+		//Mouse is left of the button
+		if (x < mPosition.x)
+		{
+			inside = false;
+		}
+		//Mouse is right of the button
+		else if (x > mPosition.x + BUTTON_WIDTH)
+		{
+			inside = false;
+		}
+		//Mouse above the button
+		else if (y < mPosition.y)
+		{
+			inside = false;
+		}
+		//Mouse below the button
+		else if (y > mPosition.y + BUTTON_HEIGHT)
+		{
+			inside = false;
+		}
+
+		//Mouse is outside button
+		if (!inside)
+		{
+			mCurrentSprite = BUTTON_SPRITE_MOUSE_OUT;
+		}
+		//Mouse is inside button
+		else
+		{
+			//Set mouse over sprite
+			switch (e->type)
+			{
+			case SDL_MOUSEMOTION:
+				mCurrentSprite = BUTTON_SPRITE_MOUSE_OVER_MOTION;
+				break;
+
+			case SDL_MOUSEBUTTONDOWN:
+				mCurrentSprite = BUTTON_SPRITE_MOUSE_DOWN;
+				return true;
+				break;
+			}
+		}
+	}
+	return false;
+}
+
+void LButton::render()
+{
+	//Show current button sprite
+	gButtonSpriteSheetTexture.render(mPosition.x, mPosition.y, &gSpriteClips[mCurrentSprite]);
+}
+
 Tile::Tile(int x, int y, int tileType)
 {
 	//Get the offsets
@@ -563,18 +710,22 @@ SDL_Rect Tile::getBox()
 	return mBox;
 }
 
-Dot::Dot()
+
+
+Dot::Dot(int x, int y)
 {
 	life = 3;
 	//Initialize the collision box
-	mBox.x = 32;
-	mBox.y = 32;
+	mBox.x = x;
+	mBox.y = y;
 	mBox.w = DOT_WIDTH;
 	mBox.h = DOT_HEIGHT;
 
 	//Initialize the velocity
 	mVelX = 0;
 	mVelY = 0;
+
+	totalBomb = 1;
 
 	dead = false;
 
@@ -693,18 +844,30 @@ void Dot::handleEvent2(SDL_Event& e)
 	}
 }
 
-void Dot::move(Tile* tiles[], Bomb* bomb[], Bot* bot[])
+void Dot::move(Tile* tiles[], Bomb* bomb[], Bot* bot[], Dot* otherDot, Bomb* bomb2[])
 {
 	//Move the dot left or right 
 	mBox.x += mVelX;
 	getIteam(tiles, bomb, bot);
 
 	//If the dot went too far to the left or right or touched a wall
-	if (touchesWall(mBox, tiles) || touchBomb(mBox, bomb))
+	if (otherDot != NULL || bomb2 != NULL)
 	{
-		mBox = touchesEgdeOfWall(mBox, tiles, mVelX, 0);
-		//move back
-		mBox.x -= mVelX;
+		if (touchesWall(mBox, tiles) || touchBomb(mBox, bomb) || checkCollision(mBox, otherDot->getRect()) || touchesBomb(mBox, bomb2))
+		{
+			mBox = touchesEgdeOfWall(mBox, tiles, mVelX, 0);
+			//move back
+			mBox.x -= mVelX;
+		}
+	}
+	else
+	{
+		if (touchesWall(mBox, tiles) || touchBomb(mBox, bomb))
+		{
+			mBox = touchesEgdeOfWall(mBox, tiles, mVelX, 0);
+			//move back
+			mBox.x -= mVelX;
+		}
 	}
 
 
@@ -712,13 +875,27 @@ void Dot::move(Tile* tiles[], Bomb* bomb[], Bot* bot[])
 	getIteam(tiles, bomb, bot);
 
 	//If the dot went too far up or down or touched a wall
-	if (touchesWall(mBox, tiles) || touchBomb(mBox, bomb))
+	if (otherDot != NULL || bomb2 != NULL)
 	{
-		mBox = touchesEgdeOfWall(mBox, tiles, 0, mVelY);
-		//move back
-		mBox.y -= mVelY;
+		if (touchesWall(mBox, tiles) || touchBomb(mBox, bomb) || checkCollision(mBox, otherDot->getRect()) || touchesBomb(mBox, bomb2))
+		{
+			mBox = touchesEgdeOfWall(mBox, tiles, 0, mVelY);
+			//move back
+			mBox.y -= mVelY;
+		}
+	}
+	else
+	{
+		if (touchesWall(mBox, tiles) || touchBomb(mBox, bomb))
+		{
+			mBox = touchesEgdeOfWall(mBox, tiles, 0, mVelY);
+			//move back
+			mBox.y -= mVelY;
+		}
 	}
 }
+
+
 
 void Dot::getIteam(Tile* tiles[], Bomb* bomb[], Bot* bot[])
 {
@@ -1003,6 +1180,12 @@ SDL_Rect Dot::getRect()
 {
 	return mBox;
 }
+
+int Dot::getTotalBomb()
+{
+	return totalBomb;
+}
+
 bool Dot::getDead()
 {
 	if (life <= 0)
@@ -1020,6 +1203,11 @@ void Dot::setRect()
 {
 	mBox.x = 32;
 	mBox.y = 32;
+}
+void Dot::setVel()
+{
+	mVelX = 0;
+	mVelY = 0;
 }
 
 Bot::Bot(int x, int y)
@@ -1160,6 +1348,7 @@ void Bot::death(Bomb* bomb[], Tile* tiles[])
 					if (checkCollision(mBox, up))
 					{
 						dead = true;
+						score += 100;
 						mBox.x = 0;
 						mBox.y = 0;
 					}
@@ -1175,6 +1364,7 @@ void Bot::death(Bomb* bomb[], Tile* tiles[])
 					if (checkCollision(mBox, down))
 					{
 						dead = true;
+						score += 100;
 						mBox.x = 0;
 						mBox.y = 0;
 					}
@@ -1190,6 +1380,7 @@ void Bot::death(Bomb* bomb[], Tile* tiles[])
 					if (checkCollision(mBox, left))
 					{
 						dead = true;
+						score += 100;
 						mBox.x = 0;
 						mBox.y = 0;
 					}
@@ -1205,6 +1396,7 @@ void Bot::death(Bomb* bomb[], Tile* tiles[])
 					if (checkCollision(mBox, right))
 					{
 						dead = true;
+						score += 100;
 						mBox.x = 0;
 						mBox.y = 0;
 					}
@@ -1214,6 +1406,7 @@ void Bot::death(Bomb* bomb[], Tile* tiles[])
 			if (checkCollision(mBox, bomb[j]->getRect()))
 			{
 				dead = true;
+				score += 100;
 				mBox.x = 0;
 				mBox.y = 0;
 			}
@@ -1402,9 +1595,27 @@ void Bomb::explode(Tile* tiles[], SDL_Rect& camera)
 	}
 }
 
-bool Bomb::handleEvent(SDL_Event& e, SDL_Rect dot)
+bool Bomb::handleEvent1(SDL_Event& e, SDL_Rect dot)
 {
-	if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_x)
+	if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_SPACE)
+	{
+		if (!beUsed)
+		{
+			beUsed = true;
+			through = true;
+			wait = SDL_GetTicks();
+			mBomb.x = ((dot.x + Dot::DOT_HEIGHT / 2) / 32) * 32;
+			mBomb.y = ((dot.y + Dot::DOT_WIDTH / 2) / 32) * 32;
+			check = true;
+			return true;
+		}
+	}
+	return false;
+}
+
+bool Bomb::handleEvent2(SDL_Event& e, SDL_Rect dot)
+{
+	if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_KP_0)
 	{
 		if (!beUsed)
 		{
@@ -1665,6 +1876,9 @@ LTimer::LTimer()
 {
 	//Initialize the variables
 	mStartTicks = 0;
+	mPausedTicks = 0;
+
+	mPaused = false;
 	mStarted = false;
 }
 
@@ -1673,8 +1887,12 @@ void LTimer::start()
 	//Start the timer
 	mStarted = true;
 
+	//Unpause the timer
+	mPaused = false;
+
 	//Get the current clock time
 	mStartTicks = SDL_GetTicks();
+	mPausedTicks = 0;
 }
 
 void LTimer::stop()
@@ -1682,19 +1900,78 @@ void LTimer::stop()
 	//Stop the timer
 	mStarted = false;
 
+	//Unpause the timer
+	mPaused = false;
+
 	//Clear tick variables
 	mStartTicks = 0;
+	mPausedTicks = 0;
+}
+
+void LTimer::pause()
+{
+	//If the timer is running and isn't already paused
+	if (mStarted && !mPaused)
+	{
+		//Pause the timer
+		mPaused = true;
+
+		//Calculate the paused ticks
+		mPausedTicks = SDL_GetTicks() - mStartTicks;
+		mStartTicks = 0;
+	}
+}
+
+void LTimer::unpause()
+{
+	//If the timer is running and paused
+	if (mStarted && mPaused)
+	{
+		//Unpause the timer
+		mPaused = false;
+
+		//Reset the starting ticks
+		mStartTicks = SDL_GetTicks() - mPausedTicks;
+
+		//Reset the paused ticks
+		mPausedTicks = 0;
+	}
 }
 
 Uint32 LTimer::getTicks()
 {
-	return SDL_GetTicks();
+	//The actual timer time
+	Uint32 time = 0;
+
+	//If the timer is running
+	if (mStarted)
+	{
+		//If the timer is paused
+		if (mPaused)
+		{
+			//Return the number of ticks when the timer was paused
+			time = mPausedTicks;
+		}
+		else
+		{
+			//Return the current time minus the start time
+			time = SDL_GetTicks() - mStartTicks;
+		}
+	}
+
+	return time / 1000;
 }
 
 bool LTimer::isStarted()
 {
 	//Timer is running and paused or unpaused
 	return mStarted;
+}
+
+bool LTimer::isPaused()
+{
+	//Timer is running and paused
+	return mPaused && mStarted;
 }
 
 bool init()
@@ -1763,7 +2040,7 @@ bool init()
 	return success;
 }
 
-bool loadMedia(Tile* tiles[], Bot* bot[])
+bool loadMedia()
 {
 	//Loading success flag
 	bool success = true;
@@ -1809,6 +2086,18 @@ bool loadMedia(Tile* tiles[], Bot* bot[])
 		success = false;
 	}
 
+	if (!PauseTexture.loadFromFile("E:\\UET\\Visual studio\\Bomberman\\Game\\x64\\Debug\\PauseGame.png"))
+	{
+		printf("Failed to load endgame texture!\n");
+		success = false;
+	}
+
+	if (!gButtonSpriteSheetTexture.loadFromFile("E:\\UET\\Visual studio\\Bomberman\\Game\\x64\\Debug\\button.png"))
+	{
+		printf("Failed to load endgame texture!\n");
+		success = false;
+	}
+
 	Music = Mix_LoadMUS("E:\\UET\\Visual studio\\Bomberman\\Game\\x64\\Debug\\TheFatRat - Fire [Chapter 8].mp3");
 	if (Music == NULL)
 	{
@@ -1817,7 +2106,7 @@ bool loadMedia(Tile* tiles[], Bot* bot[])
 	}
 
 	{
-		gFont = TTF_OpenFont("E:\\UET\\Visual studio\\Bomberman\\Game\\x64\\Debug\\lazy.ttf", 28);
+		gFont = TTF_OpenFont("E:\\UET\\Visual studio\\Bomberman\\Game\\x64\\Debug\\baijamjuree.ttf", 15);
 		if (gFont == NULL)
 		{
 			printf("Failed to load lazy font! SDL_ttf Error: %s\n", TTF_GetError());
@@ -1835,17 +2124,24 @@ bool loadMedia(Tile* tiles[], Bot* bot[])
 		}
 	}
 
-	//Load tile map
-	if (!setTiles(tiles, bot, 1))
+
+	for (int i = 0; i < BUTTON_SPRITE_TOTAL; ++i)
 	{
-		printf("Failed to load tile set!\n");
-		success = false;
+		gSpriteClips[i].x = 0;
+		gSpriteClips[i].y = i * 200;
+		gSpriteClips[i].w = BUTTON_WIDTH;
+		gSpriteClips[i].h = BUTTON_HEIGHT;
 	}
+
+	//Set buttons in corners
+	gButtons[0].setPosition(16*3, 16*16);
+	gButtons[1].setPosition(26*16, 16*16);
+	gButtons[2].setPosition(15*16, 16*27);
 
 	return success;
 }
 
-void close(Tile* tiles[])
+void close(Tile* tiles[], Bomb* bomb1[], Bomb* bomb2[], Bot* bot[])
 {
 	//Deallocate tiles
 	for (int i = 0; i < TOTAL_TILES; ++i)
@@ -1854,6 +2150,33 @@ void close(Tile* tiles[])
 		{
 			delete tiles[i];
 			tiles[i] = NULL;
+		}
+	}
+
+	for (int i = 0; i < MaxBomb; ++i)
+	{
+		if (bomb1[i] != NULL)
+		{
+			delete bomb1[i];
+			bomb1[i] = NULL;
+		}
+	}
+
+	for (int i = 0; i < MaxBomb; ++i)
+	{
+		if (bomb2[i] != NULL)
+		{
+			delete bomb2[i];
+			bomb2[i] = NULL;
+		}
+	}
+
+	for (int i = 0; i < MaxBot; ++i)
+	{
+		if (bot[i] != NULL)
+		{
+			delete tiles[i];
+			bot[i] = NULL;
 		}
 	}
 
@@ -1930,15 +2253,31 @@ bool setTiles(Tile* tiles[], Bot* bot[], int gameLevel)
 	switch (currentLevel)
 	{
 	case 1:
-		map.open("E:\\UET\\Visual studio\\Bomberman\\Game\\x64\\Debug\\map1.map");
+		map.open("E:\\UET\\Visual studio\\Bomberman\\Game\\x64\\Debug\\level-1.map");
 		break;
 	case 2:
-		map.open("E:\\UET\\Visual studio\\Bomberman\\Game\\x64\\Debug\\map2.map");
+		map.open("E:\\UET\\Visual studio\\Bomberman\\Game\\x64\\Debug\\level-2.map");
 		break;
 	case 3:
+		map.open("E:\\UET\\Visual studio\\Bomberman\\Game\\x64\\Debug\\level-3.map");
+		break;
+	case 4:
+		map.open("E:\\UET\\Visual studio\\Bomberman\\Game\\x64\\Debug\\level-4.map");
+		break;
+	case 5:
+		map.open("E:\\UET\\Visual studio\\Bomberman\\Game\\x64\\Debug\\level-5.map");
+		break;
+	case 6:
+		map.open("E:\\UET\\Visual studio\\Bomberman\\Game\\x64\\Debug\\map1.map");
+		break;
+	case 7:
+		map.open("E:\\UET\\Visual studio\\Bomberman\\Game\\x64\\Debug\\map2.map");
+		break;
+	case 8:
 		map.open("E:\\UET\\Visual studio\\Bomberman\\Game\\x64\\Debug\\map3.map");
 		break;
 	}
+
 
 	//If the map couldn't be loaded
 	if (map.fail())
@@ -2103,6 +2442,9 @@ bool checkCoordinate(SDL_Rect a, Bomb& bomb)
 	int topA, topB;
 	int bottomA, bottomB;
 
+	a.x += 4; a.y += 4;
+	a.w -= 8; a.h -= 8;
+
 	//Calculate the sides of rect A
 	leftA = a.x;
 	rightA = a.x + a.w;
@@ -2238,10 +2580,10 @@ bool touchBomb(SDL_Rect box, Bomb* bomb[])
 void NextLevel(Tile* tiles[], Dot& dot, Bot* bot[], Bomb* bomb[])
 {
 	count = 0;
-	for (int i = 0; i < totalBomb; i++)
-	{
-		bomb[i]->setRect();
-	}
+	//for (int i = 0; i < totalBomb; i++)
+	//{
+	//	bomb[i]->setRect();
+	//}
 	if (!setTiles(tiles, bot, ++currentLevel))
 	{
 		printf("Failed to load media!\n");
@@ -2250,55 +2592,12 @@ void NextLevel(Tile* tiles[], Dot& dot, Bot* bot[], Bomb* bomb[])
 	UpLevel = false;
 }
 
-void mouseEvent(SDL_Event* e)
-{
-	if (e->type == SDL_MOUSEMOTION || e->type == SDL_MOUSEBUTTONDOWN || e->type == SDL_MOUSEBUTTONUP)
-	{
-		//Get mouse position
-		int x, y;
-		SDL_GetMouseState(&x, &y);
-
-		//Check if mouse is in button
-		bool inside = true;
-
-		//Mouse is left of the button
-		if (x < 235)
-		{
-			inside = false;
-		}
-		//Mouse is right of the button
-		else if (x > 408)
-		{
-			inside = false;
-		}
-		//Mouse above the button
-		else if (y < 432)
-		{
-			inside = false;
-		}
-		//Mouse below the button
-		else if (y > 432 + 61)
-		{
-			inside = false;
-		}
-
-		//Mouse is outside button
-		if (inside)
-		{
-			//Set mouse over sprite
-			switch (e->type)
-			{
-			case SDL_MOUSEBUTTONDOWN:
-				SDL_Delay(1000);
-				game = Playing;
-				break;
-			}
-		}
-	}
-}
-
 int main(int argc, char* args[])
 {
+	int hours = 0;
+	int mins = 0;
+	int secs = 0;
+
 	//Start up SDL and create window
 	if (!init())
 	{
@@ -2308,10 +2607,18 @@ int main(int argc, char* args[])
 	{
 		//The level tiles
 		Tile* tileSet[TOTAL_TILES];
-		Bot* bot[10];
+		Bot* bot[MaxBot];
+		Bomb* bomb1[MaxBomb];
+		Bomb* bomb2[MaxBomb];
+
+		for (int i = 0; i < 20; i++)
+		{
+			bomb1[i] = new Bomb();
+			bomb2[i] = new Bomb();
+		}
 
 		//Load media
-		if (!loadMedia(tileSet, bot))
+		if (!loadMedia())
 		{
 			printf("Failed to load media!\n");
 		}
@@ -2320,26 +2627,22 @@ int main(int argc, char* args[])
 			//Main loop flag
 			bool quit = false;
 			
-
 			//Event handler
 			SDL_Event e;
 
 			//The dot that will be moving around on the screen
-			Dot dot;
-			Bomb* bomb[3];
-			for (int i = 0; i < 3; i++)
-			{
-				bomb[i] = new Bomb();
-			}
+			Dot dot1(32, 32);
+			Dot dot2(32, 64);
 
 			//The application timer
+			SDL_Color textColor = { 255, 255, 255, 255 };
 			LTimer timer;
 
 			//Level camera
 			SDL_Rect camera = { 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT };
 
 			//Play the music
-			//Mix_PlayMusic(Music, -1);
+			Mix_PlayMusic(Music, -1);
 
 			//While application is running
 			while (!quit)
@@ -2355,54 +2658,121 @@ int main(int argc, char* args[])
 					switch (game)
 					{
 					case Menu:
-						mouseEvent(&e);
+						if (gButtons[2].handleEvent(&e))
+						{
+							game = ChooseMode;
+						}
+						break;
+					case ChooseMode:
+						if (gButtons[1].handleEvent(&e))
+						{
+							mode = MultiPlayer;
+							currentLevel = 6;
+							//Load tile map
+							if (!setTiles(tileSet, bot, currentLevel))
+							{
+								printf("Failed to load tile set!\n");
+								quit = true;
+							}
+							game = Playing;
+						}
+						if (gButtons[0].handleEvent(&e))
+						{
+							mode = NormalGame;
+							currentLevel = rand() % 3 + 6;
+							//Load tile map
+							if (!setTiles(tileSet, bot, currentLevel))
+							{
+								printf("Failed to load tile set!\n");
+								quit = true;
+							}
+							timer.start();
+							game = Playing;
+						}
 						break;
 					case Pause:
 						if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_p)
 						{
 							game = Playing;
+							timer.unpause();
 						}
 						break;
 					case Playing:
 						if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_p)
 						{
 							game = Pause;
+							timer.pause();
 						}
 						else
 						{
-							dot.handleEvent1(e);
-							for (int i = 0; i < totalBomb; i++)
+							if (mode == NormalGame)
 							{
-								if (bomb[i]->handleEvent(e, dot.getRect())) break;
+								dot1.handleEvent1(e);
+								for (int i = 0; i < totalBomb; i++)
+								{
+									if (bomb1[i]->handleEvent1(e, dot1.getRect())) break;
+								}
 							}
-
+							else if (mode == MultiPlayer)
+							{
+								dot1.handleEvent1(e);
+								for (int i = 0; i < totalBomb; i++)
+								{
+									if (bomb1[i]->handleEvent1(e, dot1.getRect())) break;
+								}
+								dot2.handleEvent2(e);
+								for (int i = 0; i < totalBomb; i++)
+								{
+									if (bomb2[i]->handleEvent2(e, dot2.getRect())) break;
+								}
+							}
 						}
 					}
 				}
-
 				//Move the dot
-				if (game == Menu)
+				if (game == Menu || game == ChooseMode)
 				{
 					MenuTexture.render(0,0);
+					for (int i = 0; i < TOTAL_BUTTONS; ++i)
+					{
+						gButtons[i].render();
+					}
 					SDL_RenderPresent(gRenderer);
 				}
 				else if (game == Pause)
 				{
-					//ko làm gì cả :v
+					PauseTexture.setAlpha(10);
+					PauseTexture.render(0, 0);
+					SDL_RenderPresent(gRenderer);
+					dot1.setVel();
 				}
-				else if (game == Playing)
+				else if (game == Playing && mode == NormalGame)
 				{
-					dot.move(tileSet, bomb, bot);
-					dot.setCamera(camera);
-					dot.death(bomb, bot, tileSet);
-					dot.recovery();
+					
+					hours = timer.getTicks() / 3600;
+					mins = (timer.getTicks() % 3600) / 60;
+					secs = (timer.getTicks() % 3600) % 60;
+
+					std::stringstream timerText;
+					timerText.str("");
+					timerText << "Time: " << std::to_string(hours) << "h" << std::to_string(mins) << "min" << std::to_string(secs) << "sec";
+
+					if (!gTimeTextTexture.loadFromRenderedText(timerText.str().c_str(), textColor))
+					{
+						printf("Unable to render time texture!\n");
+					}
+
+					dot1.move(tileSet, bomb1, bot);
+					dot1.setCamera(camera);
+					dot1.death(bomb1, bot, tileSet);
+					dot1.recovery();
 
 					for (int i = 0; i < count; i++)
 					{
 						bot[i]->changeDirection();
 						bot[i]->findDirection(tileSet);
-						bot[i]->move(tileSet, bomb);
-						bot[i]->death(bomb, tileSet);
+						bot[i]->move(tileSet, bomb1);
+						bot[i]->death(bomb1, tileSet);
 					}
 
 
@@ -2422,24 +2792,114 @@ int main(int argc, char* args[])
 					}
 
 					//Render dot
-					dot.render(camera);
+					dot1.render(camera);
 					for (int i = 0; i < totalBomb; i++)
 					{
-						bomb[i]->render(camera, tileSet);
+						bomb1[i]->render(camera, tileSet);
 					}
-					if (dot.getDead())
+
+					gTimeTextTexture.render(2, 10);
+
+					if (dot1.getDead())
 					{
-						dot.deadRender(camera);
-						EndGameTexture.render(0, 0);
+						game = EndGame;
 					}
 					//Update screen
 					SDL_RenderPresent(gRenderer);
-					if (UpLevel) NextLevel(tileSet, dot, bot, bomb);
+					if (UpLevel) 
+					{
+						if (currentLevel < LevelNormal) NextLevel(tileSet, dot1, bot, bomb1);
+						else
+						{
+							game = WinGame;
+						}
+					}
+				}
+
+				else if (game == Playing && mode == MultiPlayer)
+				{
+					dot1.move(tileSet, bomb1, bot, &dot2, bomb2);
+					dot1.death(bomb1, bot, tileSet);
+					dot1.death(bomb2, bot, tileSet);
+					dot1.recovery();
+
+					dot2.move(tileSet, bomb2, bot, &dot1, bomb1);
+					dot2.death(bomb1, bot, tileSet);
+					dot2.death(bomb2, bot, tileSet);
+					dot2.recovery();
+
+
+					//Clear screen
+					SDL_SetRenderDrawColor(gRenderer, 0x1F, 0x2F, 0x3F, 0x4F);
+					SDL_RenderClear(gRenderer);
+
+					//Render level
+					for (int i = 0; i < TOTAL_TILES; ++i)
+					{
+						tileSet[i]->render(camera);
+					}
+
+					//Render dot
+					dot1.render(camera);
+					dot2.render(camera);
+
+					for (int i = 0; i < totalBomb; i++)
+					{
+						bomb1[i]->render(camera, tileSet);
+					}
+					for (int i = 0; i < totalBomb; i++)
+					{
+						bomb2[i]->render(camera, tileSet);
+					}
+					//Update screen
+					SDL_RenderPresent(gRenderer);
+					if (dot1.getDead()) game = Player2Win;
+					else if (dot2.getDead()) game = Player1Win;
+				}
+
+				else if (game == EndGame)
+				{
+					MenuTexture.render(0, 0);
+					for (int i = 0; i < TOTAL_BUTTONS; ++i)
+					{
+						gButtons[i].render();
+					}
+					SDL_RenderPresent(gRenderer);
+				}
+
+				else if (game == WinGame)
+				{
+					MenuTexture.render(0, 0);
+					for (int i = 0; i < TOTAL_BUTTONS; ++i)
+					{
+						gButtons[i].render();
+					}
+					SDL_RenderPresent(gRenderer);
+				}
+
+				else if (game == Player1Win)
+				{
+					MenuTexture.render(0, 0);
+					for (int i = 0; i < TOTAL_BUTTONS; ++i)
+					{
+						gButtons[i].render();
+					}
+					SDL_RenderPresent(gRenderer);
+				}
+
+				else if (game == Player2Win)
+				{
+					MenuTexture.render(0, 0);
+					for (int i = 0; i < TOTAL_BUTTONS; ++i)
+					{
+						gButtons[i].render();
+					}
+					SDL_RenderPresent(gRenderer);
 				}
 			}
 		}
 		//Free resources and close SDL
-		close(tileSet);
+		close(tileSet, bomb1, bomb2, bot);
 	}
 
 	return 0;
