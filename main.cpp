@@ -76,7 +76,6 @@ const int MaxBot = 40;
 
 
 int count = 0;
-int totalBomb = 1;
 int currentLevel = 1;
 int score = 0;
 
@@ -957,7 +956,7 @@ void Dot::getIteam(Tile* tiles[], Bomb* bomb[], Bot* bot[])
 					if (nextLevel)
 					{
 						EndGameTexture.render(0, 0);
-						NextLevelText.render(0, 0);
+						NextLevelText.render(SCREEN_WIDTH / 2 - NextLevelText.getWidth(), SCREEN_HEIGHT / 2 - NextLevelText.getWidth());
 						SDL_RenderPresent(gRenderer);
 						SDL_Delay(1500);
 						UpLevel = true;
@@ -1333,7 +1332,7 @@ void Bot::findDirection(Tile* tiles[])
 
 void Bot::death(Bomb* bomb[], Tile* tiles[])
 {
-	for (int j = 0; j < totalBomb; j++)
+	for (int j = 0; j < MaxBomb; j++)
 	{
 		if (bomb[j]->getIsExploding())
 		{
@@ -2549,7 +2548,7 @@ SDL_Rect touchesEgdeOfWall(SDL_Rect box, Tile* tiles[], int velX, int velY)
 bool touchesBomb(SDL_Rect box, Bomb* bomb[])
 {
 	//Go through the tiles
-	for (int i = 0; i < totalBomb; ++i)
+	for (int i = 0; i < MaxBomb; ++i)
 	{
 		//If the collision box touches the wall tile
 		if (checkCollision(box, bomb[i]->getRect()))
@@ -2564,7 +2563,7 @@ bool touchesBomb(SDL_Rect box, Bomb* bomb[])
 bool touchBomb(SDL_Rect box, Bomb* bomb[])
 {
 	//Go through the tiles
-	for (int i = 0; i < totalBomb; ++i)
+	for (int i = 0; i < MaxBomb; ++i)
 	{
 		//If the collision box touches the 
 		if (checkCoordinate(box, *bomb[i]))
@@ -2632,7 +2631,7 @@ int main(int argc, char* args[])
 
 			//The dot that will be moving around on the screen
 			Dot dot1(32, 32);
-			Dot dot2(32, 64);
+			Dot dot2(32*18, 32*13);
 
 			//The application timer
 			SDL_Color textColor = { 255, 255, 255, 255 };
@@ -2667,7 +2666,7 @@ int main(int argc, char* args[])
 						if (gButtons[1].handleEvent(&e))
 						{
 							mode = MultiPlayer;
-							currentLevel = 6;
+							currentLevel = rand() % 3 + 6;
 							//Load tile map
 							if (!setTiles(tileSet, bot, currentLevel))
 							{
@@ -2679,7 +2678,7 @@ int main(int argc, char* args[])
 						if (gButtons[0].handleEvent(&e))
 						{
 							mode = NormalGame;
-							currentLevel = rand() % 3 + 6;
+							currentLevel = 1;
 							//Load tile map
 							if (!setTiles(tileSet, bot, currentLevel))
 							{
@@ -2694,6 +2693,7 @@ int main(int argc, char* args[])
 						if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_p)
 						{
 							game = Playing;
+							Mix_ResumeMusic();
 							timer.unpause();
 						}
 						break;
@@ -2701,6 +2701,7 @@ int main(int argc, char* args[])
 						if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_p)
 						{
 							game = Pause;
+							Mix_PauseMusic();
 							timer.pause();
 						}
 						else
@@ -2708,7 +2709,7 @@ int main(int argc, char* args[])
 							if (mode == NormalGame)
 							{
 								dot1.handleEvent1(e);
-								for (int i = 0; i < totalBomb; i++)
+								for (int i = 0; i < dot1.getTotalBomb(); i++)
 								{
 									if (bomb1[i]->handleEvent1(e, dot1.getRect())) break;
 								}
@@ -2716,12 +2717,12 @@ int main(int argc, char* args[])
 							else if (mode == MultiPlayer)
 							{
 								dot1.handleEvent1(e);
-								for (int i = 0; i < totalBomb; i++)
+								for (int i = 0; i < dot1.getTotalBomb(); i++)
 								{
 									if (bomb1[i]->handleEvent1(e, dot1.getRect())) break;
 								}
 								dot2.handleEvent2(e);
-								for (int i = 0; i < totalBomb; i++)
+								for (int i = 0; i < dot2.getTotalBomb(); i++)
 								{
 									if (bomb2[i]->handleEvent2(e, dot2.getRect())) break;
 								}
@@ -2793,7 +2794,7 @@ int main(int argc, char* args[])
 
 					//Render dot
 					dot1.render(camera);
-					for (int i = 0; i < totalBomb; i++)
+					for (int i = 0; i < dot1.getTotalBomb(); i++)
 					{
 						bomb1[i]->render(camera, tileSet);
 					}
@@ -2843,11 +2844,11 @@ int main(int argc, char* args[])
 					dot1.render(camera);
 					dot2.render(camera);
 
-					for (int i = 0; i < totalBomb; i++)
+					for (int i = 0; i < dot1.getTotalBomb(); i++)
 					{
 						bomb1[i]->render(camera, tileSet);
 					}
-					for (int i = 0; i < totalBomb; i++)
+					for (int i = 0; i < dot2.getTotalBomb(); i++)
 					{
 						bomb2[i]->render(camera, tileSet);
 					}
