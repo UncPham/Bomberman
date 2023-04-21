@@ -262,6 +262,8 @@ private:
 	bool isExploding;
 
 	bool check;
+
+	int step;
 };
 
 
@@ -1453,6 +1455,7 @@ Bomb::Bomb() {
 	length = 1;
 	isExploding = false;
 	check = false;
+	step = 0;
 }
 
 void Bomb::explode(Tile* tiles[], SDL_Rect& camera)
@@ -1634,20 +1637,27 @@ void Bomb::render(SDL_Rect& camera, Tile* tiles[])
 {
 	int x = mBomb.x / 32;
 	int y = mBomb.y / 32;
-	if (beUsed && SDL_GetTicks() - wait < 2000)
+	if (beUsed && SDL_GetTicks() - wait < 3000)
 	{
 		BombTexture.render(mBomb.x - camera.x, mBomb.y - camera.y);
 	}
 	else
 	{
-		if (SDL_GetTicks() - wait >= 2000 && SDL_GetTicks() - wait <= 2500 && beUsed)
+		if (SDL_GetTicks() - wait >= 3000 && SDL_GetTicks() - wait <= 3500 && beUsed)
 		{
-			BoomTexture.render(mBomb.x - camera.x, mBomb.y - camera.y);
+			step++;
+			if (step / 3 >= 3) step = 8;
+			SDL_Rect temp = mBomb;
+			temp.x = 0;
+			temp.y = (step / 3) * 32;
+
+			BoomTexture.render(mBomb.x - camera.x, mBomb.y - camera.y, &temp);
+			temp.x = 32;
 			for (int i = 1; i <= length; i++)
 			{
 				if (tiles[(y - i) * 39 + x]->getType() == 0)
 				{
-					BoomTexture.render(mBomb.x - camera.x, mBomb.y - camera.y - TILE_HEIGHT * i);
+					BoomTexture.render(mBomb.x - camera.x, mBomb.y - camera.y - TILE_HEIGHT * i, &temp, 90);
 				}
 				else break;
 			}
@@ -1655,7 +1665,7 @@ void Bomb::render(SDL_Rect& camera, Tile* tiles[])
 			{
 				if (tiles[(y + i) * 39 + x]->getType() == 0)
 				{
-					BoomTexture.render(mBomb.x - camera.x, mBomb.y - camera.y + TILE_HEIGHT * i);
+					BoomTexture.render(mBomb.x - camera.x, mBomb.y - camera.y + TILE_HEIGHT * i, &temp, 270);
 				}
 				else break;
 			}
@@ -1663,7 +1673,7 @@ void Bomb::render(SDL_Rect& camera, Tile* tiles[])
 			{
 				if (tiles[y * 39 + x - i]->getType() == 0)
 				{
-					BoomTexture.render(mBomb.x - camera.x - TILE_WIDTH * i, mBomb.y - camera.y);
+					BoomTexture.render(mBomb.x - camera.x - TILE_WIDTH * i, mBomb.y - camera.y, &temp, 180);
 				}
 				else break;
 			}
@@ -1671,7 +1681,7 @@ void Bomb::render(SDL_Rect& camera, Tile* tiles[])
 			{
 				if (tiles[y * 39 + x + i]->getType() == 0)
 				{
-					BoomTexture.render(mBomb.x - camera.x + TILE_WIDTH * i, mBomb.y - camera.y);
+					BoomTexture.render(mBomb.x - camera.x + TILE_WIDTH * i, mBomb.y - camera.y, &temp, 0);
 				}
 				else break;
 			}
@@ -1682,7 +1692,7 @@ void Bomb::render(SDL_Rect& camera, Tile* tiles[])
 			}
 			isExploding = true;
 		}
-		if (SDL_GetTicks() - wait > 2500 && beUsed)
+		if (SDL_GetTicks() - wait > 3500 && beUsed)
 		{
 			beUsed = false;
 			mBomb.x = 0;
@@ -2593,10 +2603,6 @@ void NextLevel(Tile* tiles[], Dot& dot, Bot* bot[], Bomb* bomb[])
 
 int main(int argc, char* args[])
 {
-	int hours = 0;
-	int mins = 0;
-	int secs = 0;
-
 	//Start up SDL and create window
 	if (!init())
 	{
@@ -2750,9 +2756,9 @@ int main(int argc, char* args[])
 				else if (game == Playing && mode == NormalGame)
 				{
 					
-					hours = timer.getTicks() / 3600;
-					mins = (timer.getTicks() % 3600) / 60;
-					secs = (timer.getTicks() % 3600) % 60;
+					int hours = timer.getTicks() / 3600;
+					int mins = (timer.getTicks() % 3600) / 60;
+					int secs = (timer.getTicks() % 3600) % 60;
 
 					std::stringstream timerText;
 					timerText.str("");
