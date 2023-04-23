@@ -23,24 +23,22 @@ const int LEVEL_HEIGHT = 480;
 const int TILE_WIDTH = 32;
 const int TILE_HEIGHT = 32;
 const int TOTAL_TILES = 585;
-const int TOTAL_TILE_SPRITES = 18;
+const int TOTAL_TILE_SPRITES = 19;
 
-const int BUTTON_WIDTH = 100;
-const int BUTTON_HEIGHT = 100;
-const int TOTAL_BUTTONS = 3;
+const int BUTTON_WIDTH = 200;
+const int BUTTON_HEIGHT = 75;
+const int TOTAL_BUTTONS = 5;
 
 enum LButtonSprite
 {
 	BUTTON_SPRITE_MOUSE_OUT = 0,
 	BUTTON_SPRITE_MOUSE_OVER_MOTION = 1,
-	BUTTON_SPRITE_MOUSE_DOWN = 2,
-	BUTTON_SPRITE_TOTAL = 3
+	BUTTON_SPRITE_TOTAL = 2
 };
 
 //The different tile sprites
 const int Land = 0;
 const int Spon = 1;
-const int BoxExploding = 2;
 const int BombIteam = 3;
 const int LengthIteam = 4;
 const int SpeedIteam = 5;
@@ -51,10 +49,11 @@ const int BoxHasBombIteam = 9;
 const int BoxHasLengthIteam = 10;
 const int BoxHasSpeedIteam = 11;
 const int BoxHasDoor = 12;
-const int BoxHasBombIteamExploding = 13;
-const int BoxHasLengthIteamExploding = 14;
-const int BoxHasSpeedIteamExploding = 15;
-const int BoxHasDoorExploding = 16;
+const int BoxExploding = 13;
+const int BoxHasBombIteamExploding = 14;
+const int BoxHasLengthIteamExploding = 15;
+const int BoxHasSpeedIteamExploding = 16;
+const int BoxHasDoorExploding = 18;
 const int HardWall = 17;
 
 const int Menu = 1;
@@ -64,9 +63,9 @@ const int MultiPlayer = 3;
 const int NormalGame = 4;
 const int Playing = 5;
 const int EndGame = 6;
-const int WinGame = 7;
-const int Player1Win = 8;
-const int Player2Win = 9;
+const int WinGame = 8;
+const int Player1Win = 9;
+const int Player2Win = 10;
 
 const int LevelNormal = 5;
 const int LevelMultiPlayer = 3;
@@ -76,7 +75,7 @@ const int MaxBot = 40;
 
 
 int count = 0;
-int currentLevel = 1;
+int currentLevel = 0;
 int score = 0;
 
 
@@ -170,7 +169,7 @@ public:
 	bool handleEvent(SDL_Event* e);
 
 	//Shows button sprite
-	void render();
+	void render(int i);
 
 private:
 	//Top left position
@@ -240,6 +239,8 @@ public:
 
 	void incLength();
 	int getLength();
+	void resetLength();
+
 	void setLength(int _length);
 
 	int getX();
@@ -275,15 +276,14 @@ public:
 	static const int DOT_HEIGHT = 32;
 
 	//Maximum axis velocity of the dot
-	static const int DOT_VEL = 1;
 
 	//Initializes the variables
-	Bot(int x, int y);
+	Bot(int x, int y, bool k);
 
 	//Moves the dot and check collision against tiles
 	void move(Tile* tiles[], Bomb* bomb[]);
 
-	void findDirection(Tile* tiles[]);
+	void findDirection(Tile* tiles[], SDL_Rect dot);
 
 	void death(Bomb* bomb[], Tile* tile[]);
 
@@ -296,6 +296,7 @@ public:
 	int getRect_y();
 
 	bool getDead();
+
 
 	SDL_Rect getRect();
 
@@ -311,13 +312,15 @@ private:
 	bool change;
 
 	bool dead;
+
+	bool intelligent;
 };
 
 //The dot that will move around on the screen
 class Dot
 {
 public:
-	
+
 	//The dimensions of the dot
 	static const int DOT_WIDTH = 32;
 	static const int DOT_HEIGHT = 32;
@@ -345,7 +348,7 @@ public:
 	void recovery();
 
 	//Shows the dot on the screen
-	void render(SDL_Rect& camera);
+	void render(SDL_Rect& camera, int t);
 
 	int getRect_x();
 	int getRect_y();
@@ -356,11 +359,15 @@ public:
 	void deadRender(SDL_Rect camera);
 
 	int getLife();
+	void setLife(int _life);
 
-	void setRect();
-	void setVel();
+	void resetVel();
+	void stop();
 
 	SDL_Rect getRect();
+	void setRect(int x, int y);
+
+	void resetTotalBomb();
 
 private:
 	//Collision box of the dot
@@ -369,11 +376,10 @@ private:
 	//The velocity of the dot
 	int mVelX, mVelY;
 
-	bool dead;
-
 	int totalBomb;
 
 	int step;
+	int fade;
 	bool right;
 	bool left;
 
@@ -421,17 +427,20 @@ SDL_Renderer* gRenderer = NULL;
 
 //Scene textures
 LTexture gDotTexture;
+LTexture gDotTexture2;
 LTexture gTileTexture;
 SDL_Rect gTileClips[TOTAL_TILE_SPRITES];
 LTexture BombTexture;
 LTexture BoomTexture;
-LTexture BotTexture;
+LTexture BotTexture1;
+LTexture BotTexture2;
 LTexture EndGameTexture;
 LTexture MenuTexture;
 LTexture PauseTexture;
 
 LTexture NextLevelText;
 LTexture gTimeTextTexture;
+LTexture LifeTextTexture;
 
 //Globally used font
 TTF_Font* gFont = NULL;
@@ -655,9 +664,7 @@ bool LButton::handleEvent(SDL_Event* e)
 			case SDL_MOUSEMOTION:
 				mCurrentSprite = BUTTON_SPRITE_MOUSE_OVER_MOTION;
 				break;
-
 			case SDL_MOUSEBUTTONDOWN:
-				mCurrentSprite = BUTTON_SPRITE_MOUSE_DOWN;
 				return true;
 				break;
 			}
@@ -666,9 +673,10 @@ bool LButton::handleEvent(SDL_Event* e)
 	return false;
 }
 
-void LButton::render()
+void LButton::render(int i)
 {
 	//Show current button sprite
+	gSpriteClips[mCurrentSprite].x = i * 200;
 	gButtonSpriteSheetTexture.render(mPosition.x, mPosition.y, &gSpriteClips[mCurrentSprite]);
 }
 
@@ -728,9 +736,8 @@ Dot::Dot(int x, int y)
 
 	totalBomb = 1;
 
-	dead = false;
-
 	step = 0;
+	fade = 0;
 	right = false;
 	left = false;
 
@@ -741,106 +748,112 @@ Dot::Dot(int x, int y)
 
 void Dot::handleEvent1(SDL_Event& e)
 {
-	//If a key was pressed
-	if (e.type == SDL_KEYDOWN && e.key.repeat == 0)
+	if (!getDead())
 	{
-		if (step == 0) step++;
-		//Adjust the velocity
-		switch (e.key.keysym.sym)
+		//If a key was pressed
+		if (e.type == SDL_KEYDOWN && e.key.repeat == 0)
 		{
-		case SDLK_w:
-			mVelY -= DOT_VEL;
-			left = true;
-			break;
-		case SDLK_s:
-			mVelY += DOT_VEL;
-			right = true;
-			break;
-		case SDLK_a:
-			mVelX -= DOT_VEL;
-			left = true;
-			break;
-		case SDLK_d:
-			mVelX += DOT_VEL;
-			right = true;
-			break;
+			if (step == 0) step++;
+			//Adjust the velocity
+			switch (e.key.keysym.sym)
+			{
+			case SDLK_w:
+				mVelY -= DOT_VEL;
+				left = true;
+				break;
+			case SDLK_s:
+				mVelY += DOT_VEL;
+				right = true;
+				break;
+			case SDLK_a:
+				mVelX -= DOT_VEL;
+				left = true;
+				break;
+			case SDLK_d:
+				mVelX += DOT_VEL;
+				right = true;
+				break;
+			}
 		}
-	}
-	//If a key was released
-	else if (e.type == SDL_KEYUP && e.key.repeat == 0)
-	{
-		//Adjust the velocity
-		switch (e.key.keysym.sym)
+		//If a key was released
+		else if (e.type == SDL_KEYUP && e.key.repeat == 0)
 		{
-		case SDLK_w:
-			mVelY += DOT_VEL;
-			left = false;
-			break;
-		case SDLK_s:
-			mVelY -= DOT_VEL;
-			right = false;
-			break;
-		case SDLK_a:
-			mVelX += DOT_VEL;
-			left = false;
-			break;
-		case SDLK_d:
-			mVelX -= DOT_VEL;
-			right = false;
-			break;
+			//Adjust the velocity
+			switch (e.key.keysym.sym)
+			{
+			case SDLK_w:
+				mVelY += DOT_VEL;
+				left = false;
+				break;
+			case SDLK_s:
+				mVelY -= DOT_VEL;
+				right = false;
+				break;
+			case SDLK_a:
+				mVelX += DOT_VEL;
+				left = false;
+				break;
+			case SDLK_d:
+				mVelX -= DOT_VEL;
+				right = false;
+				break;
+			}
 		}
 	}
 }
 
 void Dot::handleEvent2(SDL_Event& e)
 {
-	//If a key was pressed
-	if (e.type == SDL_KEYDOWN && e.key.repeat == 0)
+	if (!getDead())
 	{
-		if (step == 0) step++;
-		//Adjust the velocity
-		switch (e.key.keysym.sym)
+		//If a key was pressed
+		if (e.type == SDL_KEYDOWN && e.key.repeat == 0)
 		{
-		case SDLK_UP:
-			mVelY -= DOT_VEL;
-			left = true;
-			break;
-		case SDLK_DOWN:
-			mVelY += DOT_VEL;
-			right = true;
-			break;
-		case SDLK_LEFT:
-			mVelX -= DOT_VEL;
-			left = true;
-			break;
-		case SDLK_RIGHT:
-			mVelX += DOT_VEL;
-			right = true;
-			break;
+			if (step == 0) step++;
+			//Adjust the velocity
+			switch (e.key.keysym.sym)
+			{
+			case SDLK_UP:
+				mVelY -= DOT_VEL;
+				left = true;
+				break;
+			case SDLK_DOWN:
+				mVelY += DOT_VEL;
+				right = true;
+				break;
+			case SDLK_LEFT:
+				mVelX -= DOT_VEL;
+				left = true;
+				break;
+			case SDLK_RIGHT:
+				mVelX += DOT_VEL;
+				right = true;
+				break;
+			}
 		}
-	}
-	//If a key was released
-	else if (e.type == SDL_KEYUP && e.key.repeat == 0)
-	{
-		//Adjust the velocity
-		switch (e.key.keysym.sym)
+		//If a key was released
+		else if (e.type == SDL_KEYUP && e.key.repeat == 0)
 		{
-		case SDLK_UP:
-			mVelY += DOT_VEL;
-			left = false;
-			break;
-		case SDLK_DOWN:
-			mVelY -= DOT_VEL;
-			right = false;
-			break;
-		case SDLK_LEFT:
-			mVelX += DOT_VEL;
-			left = false;
-			break;
-		case SDLK_RIGHT:
-			mVelX -= DOT_VEL;
-			right = false;
-			break;
+			//Adjust the velocity
+			switch (e.key.keysym.sym)
+			{
+			case SDLK_UP:
+				mVelY += DOT_VEL;
+				left = false;
+				break;
+			case SDLK_DOWN:
+				mVelY -= DOT_VEL;
+				right = false;
+				break;
+			case SDLK_LEFT:
+				mVelX += DOT_VEL;
+				left = false;
+				break;
+			case SDLK_RIGHT:
+				mVelX -= DOT_VEL;
+				right = false;
+				break;
+			}
 		}
 	}
 }
@@ -915,7 +928,10 @@ void Dot::getIteam(Tile* tiles[], Bomb* bomb[], Bot* bot[])
 			{
 				if (tiles[i]->getType() == BombIteam)
 				{
-					totalBomb++;
+					if (totalBomb < MaxBomb - 1)
+					{
+						totalBomb++;
+					}
 					bomb[totalBomb - 1]->setLength(bomb[0]->getLength());
 					tiles[i]->setType(0);
 				}
@@ -1015,7 +1031,7 @@ void Dot::death(Bomb* bomb[], Bot* bot[], Tile* tiles[])
 					up.y -= 32 * i;
 					if (checkCollision(iBox, up))
 					{
-						if (!immortal)	
+						if (!immortal)
 						{
 							life--;
 							immortal = true;
@@ -1069,7 +1085,7 @@ void Dot::death(Bomb* bomb[], Bot* bot[], Tile* tiles[])
 					right.x += 32 * i;
 					if (checkCollision(iBox, right))
 					{
-						if (!immortal)	
+						if (!immortal)
 						{
 							life--;
 							immortal = true;
@@ -1113,52 +1129,86 @@ void Dot::recovery()
 	}
 }
 
-void Dot::render(SDL_Rect& camera)
+void Dot::render(SDL_Rect& camera, int t)
 {
-	if (immortal)
+	if (!getDead())
 	{
-		alpha++;
-		if (alpha / 6 > 6) alpha = 1;
-		if (alpha / 4 >= 0 && alpha / 4 <= 2)
+		if (immortal)
 		{
-			gDotTexture.setAlpha(32);
+			alpha++;
+			if (alpha / 6 > 6) alpha = 1;
+			if (alpha / 4 >= 0 && alpha / 4 <= 2)
+			{
+				gDotTexture.setAlpha(32);
+			}
+			else gDotTexture.setAlpha(255);
 		}
-		else gDotTexture.setAlpha(255);
+		else
+		{
+			gDotTexture.setAlpha(255);
+		}
+		//render player
+		SDL_RendererFlip flipType = SDL_FLIP_NONE;
+		if (right)
+		{
+			flipType = SDL_FLIP_NONE;
+			step++;
+			if (step / 4 > 4) step = 1;
+		}
+		else if (left)
+		{
+			flipType = SDL_FLIP_HORIZONTAL;;
+			step++;
+			if (step / 4 > 4) step = 1;
+		}
+		else if (!left && !right)
+		{
+			step = 0;
+		}
+		else 
+		{
+			step = 0;
+		}
+		SDL_Rect walk = mBox;
+		walk.x = (step / 4) * 32;
+		walk.y = 0;
+		walk.w = 32;
+		walk.h = 32;
+		if (t == 1)
+		{
+			gDotTexture.render(mBox.x - camera.x, mBox.y - camera.y, &walk, 0, NULL, flipType);
+		}
+		else
+		{
+			gDotTexture2.render(mBox.x - camera.x, mBox.y - camera.y, &walk, 0, NULL, flipType);
+		}
+		fade = 0;
 	}
 	else
 	{
-		gDotTexture.setAlpha(255);
+		stop();
+		fade++;
+		if (fade / 25 >= 4) step = 99;
+		SDL_Rect walk = mBox;
+		walk.x = (fade / 25 + 5) * 32;
+		walk.y = 0;
+		walk.w = 32;
+		walk.h = 32;
+		if (t == 1)
+		{
+			gDotTexture.render(mBox.x - camera.x, mBox.y - camera.y, &walk);
+		}
+		else
+		{
+			gDotTexture2.render(mBox.x - camera.x, mBox.y - camera.y, &walk);
+		}
 	}
-	//render player
-	SDL_RendererFlip flipType = SDL_FLIP_NONE;
-	if (right)
-	{
-		flipType = SDL_FLIP_NONE;
-		step++;
-		if (step / 4 > 4) step = 1;
-	}
-	else if (left)
-	{
-		flipType = SDL_FLIP_HORIZONTAL;;
-		step++;
-		if (step / 4 > 4) step = 1;
-	}
-	else if (!left && !right)
-	{
-		step = 0;
-	}
-	SDL_Rect walk = mBox;
-	walk.x = (step / 4) * 32;
-	walk.y = 0;
-	walk.w = 32;
-	walk.h = 32;
-	gDotTexture.render(mBox.x - camera.x, mBox.y - camera.y, &walk, 0, NULL, flipType);
 }
 
 void Dot::deadRender(SDL_Rect camera)
 {
 	SDL_Rect walk = mBox;
-	walk.x = 5*32;
+	walk.x = 5 * 32;
 	walk.y = 0;
 	walk.w = 32;
 	walk.h = 32;
@@ -1191,27 +1241,43 @@ bool Dot::getDead()
 {
 	if (life <= 0)
 	{
-		dead = true;
+		return true;
 	}
-	return dead;
+	return false;
 }
 
 int Dot::getLife()
 {
 	return life;
 }
-void Dot::setRect()
+void Dot::setLife(int _life)
 {
-	mBox.x = 32;
-	mBox.y = 32;
+	life = _life;
 }
-void Dot::setVel()
+void Dot::setRect(int x, int y)
+{
+	mBox.x = x;
+	mBox.y = y;
+}
+void Dot::resetVel()
+{
+	DOT_VEL = 2;
+}
+
+void Dot::stop()
 {
 	mVelX = 0;
 	mVelY = 0;
+	left = false;
+	right = false;
 }
 
-Bot::Bot(int x, int y)
+void Dot::resetTotalBomb()
+{
+	totalBomb = 1;
+}
+
+Bot::Bot(int x, int y, bool k)
 {
 	//Initialize the collision box
 	mBox.x = x;
@@ -1224,6 +1290,7 @@ Bot::Bot(int x, int y)
 
 	change = true;
 
+	intelligent = k;
 
 	//Initialize the velocity
 	mVelX = 0;
@@ -1239,6 +1306,7 @@ void Bot::move(Tile* tiles[], Bomb* bomb[])
 	if (touchesWall(mBox, tiles) || touchesBomb(mBox, bomb))
 	{
 		//move back
+		touchesEgdeOfWall(mBox, tiles, mVelX, 0);
 		mBox.x -= mVelX;
 		mVelX = 0;
 	}
@@ -1249,6 +1317,7 @@ void Bot::move(Tile* tiles[], Bomb* bomb[])
 	if (touchesWall(mBox, tiles) || touchesBomb(mBox, bomb))
 	{
 		//move back
+		touchesEgdeOfWall(mBox, tiles, 0, mVelY);
 		mBox.y -= mVelY;
 		mVelY = 0;
 	}
@@ -1262,70 +1331,208 @@ void Bot::changeDirection()
 	}
 }
 
-void Bot::findDirection(Tile* tiles[])
+void Bot::findDirection(Tile* tiles[], SDL_Rect dot)
 {
 	if (!dead)
 	{
-		if (change)
+		if (!intelligent)
 		{
-			mVelX = 0; mVelY = 0;
-		}
-		bool up = false, down = false, right = false, left = false;
-		int x = mBox.x / 32;
-		int y = mBox.y / 32;
-		if (SDL_GetTicks() - time > 0 && mVelX == 0 && mVelY == 0)
-		{
-			if (tiles[y * 39 + x - 1]->getType() != 02) left = true;
-			if (tiles[y * 39 + x + 1]->getType() != 02) right = true;
-			if (tiles[(y - 1) * 39 + x]->getType() != 02) up = true;
-			if (tiles[(y + 1) * 39 + x]->getType() != 02) down = true;
-			bool k = true;
-			if (up == false && down == false && left == false && right == false) k = false;
-
-			while (k)
+			if (change)
 			{
-				int random = rand() % 4;
-				switch (random)
+				mVelX = 0; mVelY = 0;
+			}
+			bool up = false, down = false, right = false, left = false;
+			int x = mBox.x / 32;
+			int y = mBox.y / 32;
+			if (SDL_GetTicks() - time > 0 && mVelX == 0 && mVelY == 0)
+			{
+				if (tiles[y * 39 + x - 1]->getType() >= Land && tiles[y * 39 + x - 1]->getType() <= SpeedIteam) left = true;
+				if (tiles[y * 39 + x + 1]->getType() >= Land && tiles[y * 39 + x + 1]->getType() <= SpeedIteam) right = true;
+				if (tiles[(y - 1) * 39 + x]->getType() >= Land && tiles[(y - 1) * 39 + x]->getType() <= SpeedIteam) up = true;
+				if (tiles[(y + 1) * 39 + x]->getType() >= Land && tiles[(y + 1) * 39 + x]->getType() <= SpeedIteam) down = true;
+				bool k = true;
+				if (up == false && down == false && left == false && right == false) k = false;
+
+				while (k)
 				{
-				case 0:
-					if (up)
+					int random = rand() % 4;
+					switch (random)
 					{
-						k = false;
-						mVelY = -1;
-						change = false;
-						time = SDL_GetTicks();
-					}
-					break;
+					case 0:
+						if (up)
+						{
+							k = false;
+							mVelY = -1;
+							change = false;
+							time = SDL_GetTicks();
+						}
+						break;
 
-				case 1:
-					if (down)
-					{
-						k = false;
-						mVelY = 1;
-						change = false;
-						time = SDL_GetTicks();
-					}
-					break;
+					case 1:
+						if (down)
+						{
+							k = false;
+							mVelY = 1;
+							change = false;
+							time = SDL_GetTicks();
+						}
+						break;
 
-				case 2:
-					if (left)
-					{
-						k = false;
-						mVelX = -1;
-						change = false;
-						time = SDL_GetTicks();
-					}
-					break;
+					case 2:
+						if (left)
+						{
+							k = false;
+							mVelX = -1;
+							change = false;
+							time = SDL_GetTicks();
+						}
+						break;
 
-				case 3:
-					if (right)
-					{
-						k = false;
-						mVelX = 1;
-						change = false;
-						time = SDL_GetTicks();
+					case 3:
+						if (right)
+						{
+							k = false;
+							mVelX = 1;
+							change = false;
+							time = SDL_GetTicks();
+						}
+						break;
 					}
-					break;
+				}
+			}
+		}
+		if (intelligent)
+		{
+			if (SDL_GetTicks() - time > 0)
+			{
+				int x = mBox.x / 32;
+				int y = mBox.y / 32;
+				if (x > 2)
+				{
+					if (tiles[y * 39 + x - 1]->getType() >= Land && tiles[y * 39 + x - 1]->getType() <= SpeedIteam
+						&& tiles[y * 39 + x - 2]->getType() >= Land && tiles[y * 39 + x - 2]->getType() <= SpeedIteam
+						&& tiles[y * 39 + x - 3]->getType() >= Land && tiles[y * 39 + x - 3]->getType() <= SpeedIteam)
+					{
+						if (checkCollision(dot, tiles[y * 39 + x - 1]->getBox())
+							|| checkCollision(dot, tiles[y * 39 + x - 2]->getBox())
+							|| checkCollision(dot, tiles[y * 39 + x - 3]->getBox()))
+						{
+							mVelY = 0;
+							mVelX = -1;
+						}
+					}
+				}
+				if (x < 37)
+				{
+					if (tiles[y * 39 + x + 1]->getType() >= Land && tiles[y * 39 + x + 1]->getType() <= SpeedIteam
+						&& tiles[y * 39 + x + 2]->getType() >= Land && tiles[y * 39 + x + 2]->getType() <= SpeedIteam
+						&& tiles[y * 39 + x + 3]->getType() >= Land && tiles[y * 39 + x + 3]->getType() <= SpeedIteam)
+					{
+						if (checkCollision(dot, tiles[y * 39 + x + 1]->getBox())
+							|| checkCollision(dot, tiles[y * 39 + x + 2]->getBox())
+							|| checkCollision(dot, tiles[y * 39 + x + 3]->getBox()))
+						{
+							mVelY = 0;
+							mVelX = 1;
+						}
+					}
+				}
+				if (y > 2)
+				{
+
+					if (tiles[(y - 1) * 39 + x]->getType() >= Land && tiles[(y - 1) * 39 + x]->getType() <= SpeedIteam
+						&& tiles[(y - 2) * 39 + x]->getType() >= Land && tiles[(y - 2) * 39 + x]->getType() <= SpeedIteam
+						&& tiles[(y - 3) * 39 + x]->getType() >= Land && tiles[(y - 3) * 39 + x]->getType() <= SpeedIteam)
+					{
+						if (checkCollision(dot, tiles[(y - 1) * 39 + x]->getBox())
+							|| checkCollision(dot, tiles[(y - 2) * 39 + x]->getBox())
+							|| checkCollision(dot, tiles[(y - 3) * 39 + x]->getBox()))
+						{
+							mVelX = 0;
+							mVelY = -1;
+						}
+					}
+				}
+				if (y < 13)
+				{
+					if (tiles[(y + 1) * 39 + x]->getType() >= Land && tiles[(y + 1) * 39 + x]->getType() <= SpeedIteam
+						&& tiles[(y + 2) * 39 + x]->getType() >= Land && tiles[(y + 2) * 39 + x]->getType() <= SpeedIteam
+						&& tiles[(y + 3) * 39 + x]->getType() >= Land && tiles[(y + 3) * 39 + x]->getType() <= SpeedIteam)
+					{
+						if (checkCollision(dot, tiles[(y + 1) * 39 + x]->getBox())
+							|| checkCollision(dot, tiles[(y + 2) * 39 + x]->getBox())
+							|| checkCollision(dot, tiles[(y + 3) * 39 + x]->getBox()))
+						{
+							mVelX = 0;
+							mVelY = +1;
+						}
+					}
+				}
+			}
+			if (mVelX == 0 && mVelY == 0)
+			{
+				if (change)
+				{
+					mVelX = 0; mVelY = 0;
+				}
+				bool up = false, down = false, right = false, left = false;
+				int x = mBox.x / 32;
+				int y = mBox.y / 32;
+				if (SDL_GetTicks() - time > 0 && mVelX == 0 && mVelY == 0)
+				{
+					if (tiles[y * 39 + x - 1]->getType() >= Land && tiles[y * 39 + x - 1]->getType() <= SpeedIteam) left = true;
+					if (tiles[y * 39 + x + 1]->getType() >= Land && tiles[y * 39 + x + 1]->getType() <= SpeedIteam) right = true;
+					if (tiles[(y - 1) * 39 + x]->getType() >= Land && tiles[(y - 1) * 39 + x]->getType() <= SpeedIteam) up = true;
+					if (tiles[(y + 1) * 39 + x]->getType() >= Land && tiles[(y + 1) * 39 + x]->getType() <= SpeedIteam) down = true;
+					bool k = true;
+					if (up == false && down == false && left == false && right == false) k = false;
+
+					while (k)
+					{
+						int random = rand() % 4;
+						switch (random)
+						{
+						case 0:
+							if (up)
+							{
+								k = false;
+								mVelY = -1;
+								change = false;
+								time = SDL_GetTicks();
+							}
+							break;
+
+						case 1:
+							if (down)
+							{
+								k = false;
+								mVelY = 1;
+								change = false;
+								time = SDL_GetTicks();
+							}
+							break;
+
+						case 2:
+							if (left)
+							{
+								k = false;
+								mVelX = -1;
+								change = false;
+								time = SDL_GetTicks();
+							}
+							break;
+
+						case 3:
+							if (right)
+							{
+								k = false;
+								mVelX = 1;
+								change = false;
+								time = SDL_GetTicks();
+							}
+							break;
+						}
+					}
 				}
 			}
 		}
@@ -1420,7 +1627,14 @@ void Bot::render(SDL_Rect& camera)
 	//Show the dot
 	if (!dead)
 	{
-		BotTexture.render(mBox.x - camera.x, mBox.y - camera.y);
+		if (!intelligent)
+		{
+			BotTexture1.render(mBox.x - camera.x, mBox.y - camera.y);
+		}
+		else
+		{
+			BotTexture2.render(mBox.x - camera.x, mBox.y - camera.y);
+		}
 	}
 }
 
@@ -1646,10 +1860,10 @@ void Bomb::render(SDL_Rect& camera, Tile* tiles[])
 		if (SDL_GetTicks() - wait >= 3000 && SDL_GetTicks() - wait <= 3500 && beUsed)
 		{
 			step++;
-			if (step / 3 >= 3) step = 8;
+			if (step / 5 >= 5) step = 24;
 			SDL_Rect temp = mBomb;
 			temp.x = 0;
-			temp.y = (step / 3) * 32;
+			temp.y = (step / 5) * 32;
 
 			BoomTexture.render(mBomb.x - camera.x, mBomb.y - camera.y, &temp);
 			temp.x = 32;
@@ -1694,6 +1908,7 @@ void Bomb::render(SDL_Rect& camera, Tile* tiles[])
 		}
 		if (SDL_GetTicks() - wait > 3500 && beUsed)
 		{
+			step = 0;
 			beUsed = false;
 			mBomb.x = 0;
 			mBomb.y = 0;
@@ -1864,6 +2079,11 @@ void Bomb::incLength()
 int Bomb::getLength()
 {
 	return length;
+}
+
+void Bomb::resetLength()
+{
+	length = 1;
 }
 
 void Bomb::setLength(int _length)
@@ -2060,6 +2280,11 @@ bool loadMedia()
 		printf("Failed to load dot texture!\n");
 		success = false;
 	}
+	if (!gDotTexture2.loadFromFile("E:\\UET\\Visual studio\\Bomberman\\Game\\x64\\Debug\\player2.png"))
+	{
+		printf("Failed to load dot texture!\n");
+		success = false;
+	}
 
 	//Load tile texture
 	if (!gTileTexture.loadFromFile("E:\\UET\\Visual studio\\Bomberman\\Game\\x64\\Debug\\map.png"))
@@ -2079,17 +2304,23 @@ bool loadMedia()
 		printf("Failed to load boom texture!\n");
 		success = false;
 	}
-	if (!BotTexture.loadFromFile("E:\\UET\\Visual studio\\Bomberman\\Game\\x64\\Debug\\sciencetist3.png"))
+	if (!BotTexture1.loadFromFile("E:\\UET\\Visual studio\\Bomberman\\Game\\x64\\Debug\\sciencetist3.png"))
 	{
 		printf("Failed to load bot texture!\n");
 		success = false;
 	}
+	if (!BotTexture2.loadFromFile("E:\\UET\\Visual studio\\Bomberman\\Game\\x64\\Debug\\sciencetist2.png"))
+	{
+		printf("Failed to load bot texture!\n");
+		success = false;
+	}
+
 	if (!EndGameTexture.loadFromFile("E:\\UET\\Visual studio\\Bomberman\\Game\\x64\\Debug\\bg.jpg"))
 	{
 		printf("Failed to load endgame texture!\n");
 		success = false;
 	}
-	if (!MenuTexture.loadFromFile("E:\\UET\\Visual studio\\Bomberman\\Game\\x64\\Debug\\Menu.png"))
+	if (!MenuTexture.loadFromFile("E:\\UET\\Visual studio\\Bomberman\\Game\\x64\\Debug\\background.png"))
 	{
 		printf("Failed to load endgame texture!\n");
 		success = false;
@@ -2134,34 +2365,43 @@ bool loadMedia()
 	}
 
 
-	for (int i = 0; i < BUTTON_SPRITE_TOTAL; ++i)
-	{
-		gSpriteClips[i].x = 0;
-		gSpriteClips[i].y = i * 200;
-		gSpriteClips[i].w = BUTTON_WIDTH;
-		gSpriteClips[i].h = BUTTON_HEIGHT;
-	}
+	
+	gSpriteClips[BUTTON_SPRITE_MOUSE_OUT].x = 0;
+	gSpriteClips[BUTTON_SPRITE_MOUSE_OUT].y = 0;
+	gSpriteClips[BUTTON_SPRITE_MOUSE_OUT].w = BUTTON_WIDTH;
+	gSpriteClips[BUTTON_SPRITE_MOUSE_OUT].h = BUTTON_HEIGHT;
+
+	gSpriteClips[BUTTON_SPRITE_MOUSE_OVER_MOTION].x = 0;
+	gSpriteClips[BUTTON_SPRITE_MOUSE_OVER_MOTION].y = 75;
+	gSpriteClips[BUTTON_SPRITE_MOUSE_OVER_MOTION].w = BUTTON_WIDTH;
+	gSpriteClips[BUTTON_SPRITE_MOUSE_OVER_MOTION].h = BUTTON_HEIGHT + 9;
 
 	//Set buttons in corners
-	gButtons[0].setPosition(16*3, 16*16);
-	gButtons[1].setPosition(26*16, 16*16);
-	gButtons[2].setPosition(15*16, 16*27);
+	gButtons[0].setPosition(SCREEN_WIDTH / 2 - BUTTON_WIDTH / 2, 400);
+	gButtons[1].setPosition(SCREEN_WIDTH / 2 - BUTTON_WIDTH / 2, 400- 50);
+	gButtons[2].setPosition(SCREEN_WIDTH / 2 - BUTTON_WIDTH / 2, 400 - 100);
+	gButtons[3].setPosition(15, 372);
+	gButtons[4].setPosition(SCREEN_WIDTH - 15 - BUTTON_WIDTH, 372);
 
 	return success;
 }
 
 void close(Tile* tiles[], Bomb* bomb1[], Bomb* bomb2[], Bot* bot[])
 {
+
 	//Deallocate tiles
-	for (int i = 0; i < TOTAL_TILES; ++i)
+	if (currentLevel != 0)
 	{
-		if (tiles[i] != NULL)
+		for (int i = 0; i < TOTAL_TILES; ++i)
 		{
-			delete tiles[i];
-			tiles[i] = NULL;
+			if (tiles[i] != NULL)
+			{
+				delete tiles[i];
+				tiles[i] = NULL;
+			}
 		}
 	}
-
+	
 	for (int i = 0; i < MaxBomb; ++i)
 	{
 		if (bomb1[i] != NULL)
@@ -2170,7 +2410,7 @@ void close(Tile* tiles[], Bomb* bomb1[], Bomb* bomb2[], Bot* bot[])
 			bomb1[i] = NULL;
 		}
 	}
-
+	
 	for (int i = 0; i < MaxBomb; ++i)
 	{
 		if (bomb2[i] != NULL)
@@ -2179,19 +2419,38 @@ void close(Tile* tiles[], Bomb* bomb1[], Bomb* bomb2[], Bot* bot[])
 			bomb2[i] = NULL;
 		}
 	}
-
-	for (int i = 0; i < MaxBot; ++i)
+	
+	for (int i = 0; i < count; ++i)
 	{
 		if (bot[i] != NULL)
 		{
-			delete tiles[i];
+			delete bot[i];
 			bot[i] = NULL;
 		}
 	}
-
+	
 	//Free loaded images
 	gDotTexture.free();
 	gTileTexture.free();
+	gButtonSpriteSheetTexture.free();
+	gDotTexture.free();
+	gTileTexture.free();
+	BombTexture.free();
+	BoomTexture.free();
+	BotTexture1.free();
+	BotTexture2.free();
+	EndGameTexture.free();
+	MenuTexture.free();
+	PauseTexture.free();
+	NextLevelText.free();
+	gTimeTextTexture.free();
+	LifeTextTexture.free();
+	
+	TTF_CloseFont(gFont);
+	gFont = NULL;
+
+	Mix_FreeMusic(Music);
+	Music = NULL;
 
 	//Destroy window	
 	SDL_DestroyRenderer(gRenderer);
@@ -2203,6 +2462,7 @@ void close(Tile* tiles[], Bomb* bomb1[], Bomb* bomb2[], Bot* bot[])
 	IMG_Quit();
 	SDL_Quit();
 }
+
 
 bool checkCollision(SDL_Rect a, SDL_Rect b)
 {
@@ -2314,13 +2574,19 @@ bool setTiles(Tile* tiles[], Bot* bot[], int gameLevel)
 				break;
 			}
 
+			//clearBot(bot);
 			//If the number is a valid tile number
 			if ((tileType >= 0) && (tileType < TOTAL_TILE_SPRITES))
 			{
 				if (tileType == 1)
 				{
 					tileType = 0;
-					bot[count++] = new Bot(x, y);
+					bot[count++] = new Bot(x, y, false);
+				}
+				if (tileType == 18)
+				{
+					tileType = 0;
+					bot[count++] = new Bot(x, y, true);
 				}
 				tiles[i] = new Tile(x, y, tileType);
 			}
@@ -2496,7 +2762,7 @@ bool touchesWall(SDL_Rect box, Tile* tiles[])
 	for (int i = 0; i < TOTAL_TILES; ++i)
 	{
 		//If the tile is a wall type tile
-		if (tiles[i]->getType() >= Wall && tiles[i]->getType() <= BoxHasDoorExploding || tiles[i]->getType() == 17)
+		if (tiles[i]->getType() >= Wall && tiles[i]->getType() <= BoxHasDoorExploding || tiles[i]->getType() == BoxHasDoorExploding)
 		{
 			//If the collision box touches the wall tile
 			if (checkCollision(box, tiles[i]->getBox()))
@@ -2520,7 +2786,7 @@ SDL_Rect touchesEgdeOfWall(SDL_Rect box, Tile* tiles[], int velX, int velY)
 				// Adjust character's position
 				if (velX != 0) {
 					// If character was moving right and collides with obstacle, move character to left edge of obstacle
-					if (box.y + Dot::DOT_HEIGHT > wall.y && box.y < wall.y + wall.h) 
+					if (box.y + Dot::DOT_HEIGHT > wall.y && box.y < wall.y + wall.h)
 					{
 						// If character is vertically aligned with obstacle, move up or down to avoid obstacle
 						if (box.y + Dot::DOT_HEIGHT < wall.y + wall.h / 2 && tiles[i - 39]->getType() >= Land && tiles[i - 39]->getType() <= Door)
@@ -2533,10 +2799,10 @@ SDL_Rect touchesEgdeOfWall(SDL_Rect box, Tile* tiles[], int velX, int velY)
 						}
 					}
 				}
-				
+
 				if (velY != 0) {
 					// If character was moving down and collides with obstacle, move character to top edge of obstacle
-					if (box.x + Dot::DOT_WIDTH > wall.x && box.x < wall.x + wall.w) 
+					if (box.x + Dot::DOT_WIDTH > wall.x && box.x < wall.x + wall.w)
 					{
 						// If character is horizontally aligned with obstacle, move left or right to avoid obstacle
 						if (box.x + Dot::DOT_WIDTH < wall.x + wall.w / 2 && tiles[i - 1]->getType() >= Land && tiles[i - 39]->getType() <= Door)
@@ -2597,7 +2863,7 @@ void NextLevel(Tile* tiles[], Dot& dot, Bot* bot[], Bomb* bomb[])
 	{
 		printf("Failed to load media!\n");
 	}
-	dot.setRect();
+	dot.setRect(32, 32);
 	UpLevel = false;
 }
 
@@ -2631,13 +2897,13 @@ int main(int argc, char* args[])
 		{
 			//Main loop flag
 			bool quit = false;
-			
+
 			//Event handler
 			SDL_Event e;
 
 			//The dot that will be moving around on the screen
 			Dot dot1(32, 32);
-			Dot dot2(32*18, 32*13);
+			Dot dot2(32 * 18, 32 * 13);
 
 			//The application timer
 			SDL_Color textColor = { 255, 255, 255, 255 };
@@ -2646,8 +2912,10 @@ int main(int argc, char* args[])
 			//Level camera
 			SDL_Rect camera = { 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT };
 
+			int transition = 0;
+
 			//Play the music
-			Mix_PlayMusic(Music, -1);
+			//Mix_PlayMusic(Music, -1);
 
 			//While application is running
 			while (!quit)
@@ -2663,35 +2931,64 @@ int main(int argc, char* args[])
 					switch (game)
 					{
 					case Menu:
-						if (gButtons[2].handleEvent(&e))
+						if (gButtons[1].handleEvent(&e))
 						{
 							game = ChooseMode;
 						}
 						break;
 					case ChooseMode:
-						if (gButtons[1].handleEvent(&e))
+						if (gButtons[4].handleEvent(&e))
 						{
 							mode = MultiPlayer;
+							transition = 0;
 							currentLevel = rand() % 3 + 6;
 							//Load tile map
+							count = 0;
 							if (!setTiles(tileSet, bot, currentLevel))
 							{
 								printf("Failed to load tile set!\n");
 								quit = true;
 							}
+
+							dot1.resetVel();
+							dot1.resetTotalBomb();
+							dot1.setLife(1);
+							dot1.setRect(32, 32);
+							for (int i = 0; i < dot1.getTotalBomb(); i++)
+							{
+								bomb1[i]->resetLength();
+							}
+							dot2.resetVel();
+							dot2.resetTotalBomb();
+							dot2.setLife(1);
+							dot2.setRect(32 * 18, 32 * 13);
+							for (int i = 0; i < dot1.getTotalBomb(); i++)
+							{
+								bomb2[i]->resetLength();
+							}
 							game = Playing;
 						}
-						if (gButtons[0].handleEvent(&e))
+						if (gButtons[3].handleEvent(&e))
 						{
 							mode = NormalGame;
+							transition = 0;
 							currentLevel = 1;
 							//Load tile map
+							count = 0;
 							if (!setTiles(tileSet, bot, currentLevel))
 							{
 								printf("Failed to load tile set!\n");
 								quit = true;
 							}
 							timer.start();
+							dot1.resetVel();
+							dot1.resetTotalBomb();
+							dot1.setRect(32, 32);
+							dot1.setLife(3);
+							for (int i = 0; i < dot1.getTotalBomb(); i++)
+							{
+								bomb1[i]->resetLength();
+							}
 							game = Playing;
 						}
 						break;
@@ -2701,6 +2998,10 @@ int main(int argc, char* args[])
 							game = Playing;
 							Mix_ResumeMusic();
 							timer.unpause();
+						}
+						if (gButtons[0].handleEvent(&e))
+						{
+							game = Menu;
 						}
 						break;
 					case Playing:
@@ -2734,28 +3035,84 @@ int main(int argc, char* args[])
 								}
 							}
 						}
+
+					case EndGame:
+						if (gButtons[2].handleEvent(&e))
+						{
+							mode = NormalGame;
+							transition = 0;
+							currentLevel = 1;
+							//Load tile map
+							count = 0;
+							if (!setTiles(tileSet, bot, currentLevel))
+							{
+								printf("Failed to load tile set!\n");
+								quit = true;
+							}
+							timer.start();
+							dot1.resetVel();
+							dot1.resetTotalBomb();
+							dot1.setRect(32, 32);
+							dot1.setLife(3);
+							for (int i = 0; i < dot1.getTotalBomb(); i++)
+							{
+								bomb1[i]->resetLength();
+							}
+							game = Playing;
+						}
+						if (gButtons[0].handleEvent(&e))
+						{
+							game = Menu;
+						}
+						break;
+					case Player1Win:
+						if (gButtons[0].handleEvent(&e))
+						{
+							game = Menu;
+						}
+						break;
+					case Player2Win:
+						if (gButtons[0].handleEvent(&e))
+						{
+							game = Menu;
+						}
+						break;
+					case WinGame:
+						if (gButtons[0].handleEvent(&e))
+						{
+							game = Menu;
+						}
+						break;
 					}
 				}
+
 				//Move the dot
-				if (game == Menu || game == ChooseMode)
+				if (game == Menu)
 				{
-					MenuTexture.render(0,0);
-					for (int i = 0; i < TOTAL_BUTTONS; ++i)
-					{
-						gButtons[i].render();
-					}
+					MenuTexture.render(0, 0);
+					gButtons[1].render(1);
+					SDL_RenderPresent(gRenderer);
+				}
+				else if (game == ChooseMode)
+				{
+					MenuTexture.render(0, 0);
+					gButtons[3].render(3);
+					gButtons[4].render(4);
 					SDL_RenderPresent(gRenderer);
 				}
 				else if (game == Pause)
 				{
+					dot1.stop();
 					PauseTexture.setAlpha(10);
 					PauseTexture.render(0, 0);
+					gButtons[0].render(0);
 					SDL_RenderPresent(gRenderer);
-					dot1.setVel();
+					dot1.stop();
+					dot2.stop();
 				}
 				else if (game == Playing && mode == NormalGame)
 				{
-					
+
 					int hours = timer.getTicks() / 3600;
 					int mins = (timer.getTicks() % 3600) / 60;
 					int secs = (timer.getTicks() % 3600) % 60;
@@ -2769,6 +3126,14 @@ int main(int argc, char* args[])
 						printf("Unable to render time texture!\n");
 					}
 
+					std::stringstream lifeText;
+					lifeText.str("");
+					lifeText << "Life: " << dot1.getLife();
+					if (!LifeTextTexture.loadFromRenderedText(lifeText.str().c_str(), textColor))
+					{
+						printf("Unable to render time texture!\n");
+					}
+
 					dot1.move(tileSet, bomb1, bot);
 					dot1.setCamera(camera);
 					dot1.death(bomb1, bot, tileSet);
@@ -2777,7 +3142,7 @@ int main(int argc, char* args[])
 					for (int i = 0; i < count; i++)
 					{
 						bot[i]->changeDirection();
-						bot[i]->findDirection(tileSet);
+						bot[i]->findDirection(tileSet, dot1.getRect());
 						bot[i]->move(tileSet, bomb1);
 						bot[i]->death(bomb1, tileSet);
 					}
@@ -2799,21 +3164,26 @@ int main(int argc, char* args[])
 					}
 
 					//Render dot
-					dot1.render(camera);
+					dot1.render(camera, 1);
 					for (int i = 0; i < dot1.getTotalBomb(); i++)
 					{
 						bomb1[i]->render(camera, tileSet);
 					}
 
 					gTimeTextTexture.render(2, 10);
+					LifeTextTexture.render(SCREEN_WIDTH - 60, 10);
 
 					if (dot1.getDead())
 					{
-						game = EndGame;
+						transition++;
+						if (transition > 100)
+						{
+							game = EndGame;
+						}
 					}
 					//Update screen
 					SDL_RenderPresent(gRenderer);
-					if (UpLevel) 
+					if (UpLevel)
 					{
 						if (currentLevel < LevelNormal) NextLevel(tileSet, dot1, bot, bomb1);
 						else
@@ -2847,8 +3217,8 @@ int main(int argc, char* args[])
 					}
 
 					//Render dot
-					dot1.render(camera);
-					dot2.render(camera);
+					dot1.render(camera, 1);
+					dot2.render(camera, 2);
 
 					for (int i = 0; i < dot1.getTotalBomb(); i++)
 					{
@@ -2860,47 +3230,56 @@ int main(int argc, char* args[])
 					}
 					//Update screen
 					SDL_RenderPresent(gRenderer);
-					if (dot1.getDead()) game = Player2Win;
-					else if (dot2.getDead()) game = Player1Win;
+					if (dot1.getDead())
+					{
+						transition++;
+						if (transition > 100)
+						{
+							game = Player2Win;
+						}
+					}
+					else if (dot2.getDead())
+					{
+						transition++;
+						if (transition > 100)
+						{
+							game = Player1Win;
+						}
+					}
 				}
 
 				else if (game == EndGame)
 				{
+					dot1.stop();
 					MenuTexture.render(0, 0);
-					for (int i = 0; i < TOTAL_BUTTONS; ++i)
-					{
-						gButtons[i].render();
-					}
+					gButtons[0].render(0);
+					gButtons[2].render(2);
 					SDL_RenderPresent(gRenderer);
 				}
 
 				else if (game == WinGame)
 				{
+					dot1.stop();
 					MenuTexture.render(0, 0);
-					for (int i = 0; i < TOTAL_BUTTONS; ++i)
-					{
-						gButtons[i].render();
-					}
+					gButtons[0].render(0);
 					SDL_RenderPresent(gRenderer);
 				}
 
 				else if (game == Player1Win)
 				{
+					dot1.stop();
+					dot2.stop();
 					MenuTexture.render(0, 0);
-					for (int i = 0; i < TOTAL_BUTTONS; ++i)
-					{
-						gButtons[i].render();
-					}
+					gButtons[0].render(0);
 					SDL_RenderPresent(gRenderer);
 				}
 
 				else if (game == Player2Win)
 				{
+					dot1.stop();
+					dot2.stop();
 					MenuTexture.render(0, 0);
-					for (int i = 0; i < TOTAL_BUTTONS; ++i)
-					{
-						gButtons[i].render();
-					}
+					gButtons[0].render(0);
 					SDL_RenderPresent(gRenderer);
 				}
 			}
@@ -2908,6 +3287,5 @@ int main(int argc, char* args[])
 		//Free resources and close SDL
 		close(tileSet, bomb1, bomb2, bot);
 	}
-
 	return 0;
 }
